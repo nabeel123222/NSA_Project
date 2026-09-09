@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>NSA | Human Detection</title>
+
+    <link rel="stylesheet" href="/static/style.css">
+
+</head>
+
+<body>
+
+<div class="app-shell">
+
+    <!-- =====================================================
+         SIDEBAR
+         ===================================================== -->
+
+    <aside class="sidebar">
+
+        <div class="brand">
+
+            <div class="brand-icon">
+                N
+            </div>
+
+            <div>
+                <h2>NSA</h2>
+                <span>Neuro Sensing</span>
+            </div>
+
+        </div>
+
+
+        <nav class="navigation">
+
+            <p class="nav-title">MONITORING</p>
+
+            <button class="nav-item active">
+                <span>◉</span>
+                Human Detection
+            </button>
+
+            <button class="nav-item">
+                <span>◎</span>
+                Live Monitoring
+            </button>
+
+            <button class="nav-item">
+                <span>◌</span>
+                AI Monitoring
+            </button>
+
+            <p class="nav-title">SYSTEM</p>
+
+            <button class="nav-item">
+                <span>⌁</span>
+                Wi-Fi / CSI
+            </button>
+
+            <button class="nav-item">
+                <span>▣</span>
+                Device Manager
+            </button>
+
+            <button class="nav-item">
+                <span>◫</span>
+                Detection Timeline
+            </button>
+
+            <button class="nav-item">
+                <span>⚙</span>
+                Settings
+            </button>
+
+        </nav>
+
+
+        <div class="sidebar-footer">
+
+            <div class="system-dot"></div>
+
+            <div>
+                <strong>System Ready</strong>
+                <small>ESP32-S3 connected</small>
+            </div>
+
+        </div>
+
+    </aside>
+
+
+    <!-- =====================================================
+         MAIN CONTENT
+         ===================================================== -->
+
+    <main class="main-content">
+
+
+        <!-- HEADER -->
+
+        <header class="topbar">
+
+            <div>
+
+                <p class="eyebrow">
+                    NEURO SENSING ARCHITECTURE
+                </p>
+
+                <h1>
+                    Human Detection
+                </h1>
+
+                <p class="page-description">
+                    Contactless human presence detection using
+                    Wi-Fi CSI and machine learning.
+                </p>
+
+            </div>
+
+
+            <div class="connection-status">
+
+                <span class="status-dot"></span>
+
+                <div>
+                    <strong>System Online</strong>
+                    <small>ESP32-S3 · CSI Active</small>
+                </div>
+
+            </div>
+
+        </header>
+
+
+        <!-- =================================================
+             STATUS CARDS
+             ================================================= -->
+
+        <section class="stats-grid">
+
+
+            <div class="stat-card">
+
+                <div class="stat-icon">
+                    📡
+                </div>
+
+                <div>
+
+                    <span class="stat-label">
+                        ESP32
+                    </span>
+
+                    <strong id="espStatus">
+                        Connected
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <div class="stat-card">
+
+                <div class="stat-icon">
+                    📶
+                </div>
+
+                <div>
+
+                    <span class="stat-label">
+                        CSI Sample Rate
+                    </span>
+
+                    <strong id="sampleRate">
+                        0 Hz
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <div class="stat-card">
+
+                <div class="stat-icon">
+                    🏠
+                </div>
+
+                <div>
+
+                    <span class="stat-label">
+                        Detection Zone
+                    </span>
+
+                    <strong id="roomStatus">
+                        Ready
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <div class="stat-card">
+
+                <div class="stat-icon">
+                    ◉
+                </div>
+
+                <div>
+
+                    <span class="stat-label">
+                        Model
+                    </span>
+
+                    <strong>
+                        Random Forest
+                    </strong>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             MAIN DETECTION AREA
+             ================================================= -->
+
+        <section class="dashboard-grid">
+
+
+            <!-- DETECTION CARD -->
+
+            <div class="detection-card">
+
+                <div class="card-header">
+
+                    <div>
+
+                        <span class="section-label">
+                            LIVE DETECTION
+                        </span>
+
+                        <h2>
+                            Human Presence
+                        </h2>
+
+                    </div>
+
+                    <div id="liveIndicator"
+                         class="live-indicator">
+
+                        <span></span>
+                        LIVE
+
+                    </div>
+
+                </div>
+
+
+                <div class="detection-center">
+
+                    <div id="detectionIcon"
+                         class="detection-icon">
+
+                        <span>◉</span>
+
+                    </div>
+
+
+                    <h3 id="humanStatus">
+                        SCANNING...
+                    </h3>
+
+
+                    <p id="detectionDescription">
+
+                        Start monitoring to detect
+                        human presence.
+
+                    </p>
+
+
+                    <div class="confidence-area">
+
+                        <div class="confidence-header">
+
+                            <span>
+                                Confidence
+                            </span>
+
+                            <strong id="confidence">
+                                0%
+                            </strong>
+
+                        </div>
+
+
+                        <div class="confidence-track">
+
+                            <div id="confidenceBar"
+                                 class="confidence-fill">
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- SIGNAL CARD -->
+
+            <div class="signal-card">
+
+                <div class="card-header">
+
+                    <div>
+
+                        <span class="section-label">
+                            CSI SIGNAL
+                        </span>
+
+                        <h2>
+                            Signal Information
+                        </h2>
+
+                    </div>
+
+                </div>
+
+
+                <div class="signal-list">
+
+
+                    <div class="signal-row">
+
+                        <span>
+                            Prediction
+                        </span>
+
+                        <strong id="rawPrediction">
+                            UNKNOWN
+                        </strong>
+
+                    </div>
+
+
+                    <div class="signal-row">
+
+                        <span>
+                            Present Probability
+                        </span>
+
+                        <strong id="presentProbability">
+                            0%
+                        </strong>
+
+                    </div>
+
+
+                    <div class="signal-row">
+
+                        <span>
+                            Empty Probability
+                        </span>
+
+                        <strong id="emptyProbability">
+                            0%
+                        </strong>
+
+                    </div>
+
+
+                    <div class="signal-row">
+
+                        <span>
+                            CSI Rate
+                        </span>
+
+                        <strong id="signalRate">
+                            0 Hz
+                        </strong>
+
+                    </div>
+
+
+                    <div class="signal-row">
+
+                        <span>
+                            Window
+                        </span>
+
+                        <strong>
+                            50 × 64
+                        </strong>
+
+                    </div>
+
+
+                    <div class="signal-row">
+
+                        <span>
+                            Features
+                        </span>
+
+                        <strong>
+                            258
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             CONTROLS
+             ================================================= -->
+
+        <section class="control-card">
+
+            <div>
+
+                <span class="section-label">
+                    CONTROL
+                </span>
+
+                <h2>
+                    Detection Control
+                </h2>
+
+                <p>
+                    Start or stop the live CSI human detection
+                    service.
+                </p>
+
+            </div>
+
+
+            <div class="control-buttons">
+
+                <button id="monitorBtn"
+                        class="primary-button">
+
+                    <span>▶</span>
+                    Start Monitoring
+
+                </button>
+
+
+                <button id="stopBtn"
+                        class="secondary-button">
+
+                    <span>■</span>
+                    Stop
+
+                </button>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             LIVE LOG
+             ================================================= -->
+
+        <section class="log-card">
+
+            <div class="card-header">
+
+                <div>
+
+                    <span class="section-label">
+                        ACTIVITY
+                    </span>
+
+                    <h2>
+                        Detection Log
+                    </h2>
+
+                </div>
+
+                <span id="logStatus"
+                      class="log-status">
+
+                    Waiting
+
+                </span>
+
+            </div>
+
+
+            <div id="logBox"
+                 class="log-box">
+
+                <div class="log-entry">
+
+                    <span class="log-time">
+                        --:--:--
+
+                    </span>
+
+                    <span>
+                        System ready. Start monitoring
+                        to begin CSI detection.
+                    </span>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- FOOTER -->
+
+        <footer>
+
+            <span>
+                NSA · Neuro Sensing Architecture
+            </span>
+
+            <span>
+                Wi-Fi CSI · ESP32-S3 · Random Forest
+            </span>
+
+        </footer>
+
+    </main>
+
+</div>
+
+
+<script src="/static/script.js"></script>
+
+</body>
+
+</html>
