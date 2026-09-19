@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>NSA | Fall Detection</title>
+
+    <link rel="stylesheet" href="/static/style.css">
+
+    <style>
+
+        .fall-page {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .fall-hero {
+            margin-bottom: 30px;
+        }
+
+        .fall-hero h1 {
+            margin-bottom: 8px;
+        }
+
+        .fall-hero p {
+            color: #777;
+            font-size: 15px;
+        }
+
+        .fall-main-card {
+            background: #ffffff;
+            border-radius: 18px;
+            padding: 35px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+            margin-bottom: 25px;
+        }
+
+        .fall-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .fall-card-header h2 {
+            margin: 5px 0;
+        }
+
+        .fall-label {
+            font-size: 12px;
+            letter-spacing: 1.5px;
+            color: #888;
+            font-weight: 700;
+        }
+
+        .fall-live {
+            padding: 8px 14px;
+            border-radius: 20px;
+            background: #eaf8ee;
+            color: #22a447;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .fall-live span {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #22a447;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
+        .fall-status {
+            text-align: center;
+            padding: 45px 20px;
+            border-radius: 16px;
+            background: #f7faf8;
+            border: 1px solid #e5eee8;
+        }
+
+        .fall-icon {
+            width: 90px;
+            height: 90px;
+            margin: 0 auto 20px;
+
+            border-radius: 50%;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            background: #eaf8ee;
+            color: #22a447;
+
+            font-size: 45px;
+            font-weight: bold;
+        }
+
+        .fall-icon.alert {
+            background: #fff0f0;
+            color: #d62828;
+        }
+
+        #fallStatus {
+            font-size: 34px;
+            margin: 0 0 10px;
+            color: #22a447;
+        }
+
+        #fallDescription {
+            color: #777;
+            margin: 0;
+        }
+
+        .fall-progress-section {
+            margin-top: 30px;
+        }
+
+        .fall-progress-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .fall-progress-header span {
+            color: #666;
+        }
+
+        .fall-progress-header strong {
+            font-size: 18px;
+        }
+
+        .fall-progress-track {
+            width: 100%;
+            height: 12px;
+            background: #eeeeee;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #fallConfidenceBar {
+            width: 0%;
+            height: 100%;
+            background: #22a447;
+            border-radius: 10px;
+            transition: width 0.4s ease;
+        }
+
+        .fall-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+            margin-top: 25px;
+        }
+
+        .fall-stat {
+            padding: 20px;
+            border-radius: 14px;
+            background: #f8f8f8;
+        }
+
+        .fall-stat span {
+            display: block;
+            color: #888;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .fall-stat strong {
+            font-size: 22px;
+        }
+
+        .fall-info-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        .info-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.05);
+        }
+
+        .info-card h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+
+        .info-card p {
+            color: #777;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        @media (max-width: 800px) {
+
+            .fall-stats,
+            .fall-info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .fall-main-card {
+                padding: 20px;
+            }
+
+            #fallStatus {
+                font-size: 27px;
+            }
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+    <!-- =====================================================
+     EMERGENCY FALL ALERT
+     ===================================================== -->
+
+<div id="fallAlertOverlay" class="fall-alert-overlay">
+
+    <div class="fall-alert-box">
+
+        <div class="fall-alert-icon">
+            ⚠
+        </div>
+
+        <div class="fall-alert-content">
+
+            <div class="fall-alert-title">
+                FALL DETECTED
+            </div>
+
+            <div class="fall-alert-message">
+                A possible fall has been detected.
+                Please check the person immediately.
+            </div>
+
+            <div class="fall-alert-time">
+                Detection time:
+                <span id="fallAlertTime">--:--:--</span>
+            </div>
+
+            <button
+                id="acknowledgeFallBtn"
+                class="acknowledge-fall-btn">
+                ACKNOWLEDGE ALERT
+            </button>
+
+            
+
+        </div>
+
+    </div>
+
+    
+</div>
+
+<!-- =====================================================
+     TEMPORARY SOUND TEST
+     ===================================================== -->
+
+<!--<div style="padding: 20px; text-align: center;">
+    <button
+        id="testAlertSoundBtn"
+        class="acknowledge-fall-btn"
+        style="display: inline-block; background: #d62828; color: white; padding: 14px 25px; border: none; border-radius: 8px; cursor: pointer; font-weight: 700;">
+        🔊 TEST EMERGENCY SOUND
+    </button>
+</div>
+-->
+
+
+<div class="app-shell">
+
+    <!-- =====================================================
+         SIDEBAR
+         ===================================================== -->
+
+    <aside class="sidebar">
+
+        <div class="brand">
+
+            <div class="brand-icon">
+                N
+            </div>
+
+            <div>
+                <h2>NSA</h2>
+                <span>Neuro Sensing</span>
+            </div>
+
+        </div>
+
+
+        <nav class="navigation">
+
+            <p class="nav-title">
+                MONITORING
+            </p>
+
+            <a href="/" class="nav-item">
+                <span>◉</span>
+                Human Detection
+            </a>
+
+            <a href="/fall-detection"
+               class="nav-item active">
+
+                <span>⚠</span>
+                Fall Detection
+
+            </a>
+
+            <p class="nav-title">
+    ALERTS
+</p>
+
+<a href="/alerts" class="nav-item">
+    <span>🔔</span>
+    Alert History
+</a>
+
+
+<p class="nav-title">
+    SYSTEM
+</p>
+
+
+            <p class="nav-title">
+                SYSTEM
+            </p>
+
+            <button class="nav-item">
+                <span>⌁</span>
+                Wi-Fi / CSI
+            </button>
+
+            <button class="nav-item">
+                <span>▣</span>
+                Device Manager
+            </button>
+
+            <button class="nav-item">
+                <span>◫</span>
+                Detection Timeline
+            </button>
+
+            <button class="nav-item">
+                <span>⚙</span>
+                Settings
+            </button>
+
+        </nav>
+
+
+        <div class="sidebar-footer">
+
+            <div class="system-dot"></div>
+
+            <div>
+                <strong>
+                    System Ready
+                </strong>
+
+                <small>
+                    ESP32-S3 connected
+                </small>
+            </div>
+
+        </div>
+
+    </aside>
+
+
+    <!-- =====================================================
+         MAIN CONTENT
+         ===================================================== -->
+
+    <main class="main-content">
+
+        <div class="fall-page">
+
+
+            <!-- HEADER -->
+
+            <header class="topbar">
+
+                <div class="fall-hero">
+
+                    <p class="eyebrow">
+                        NEURO SENSING ARCHITECTURE
+                    </p>
+
+                    <h1>
+                        Fall Detection
+                    </h1>
+
+                    <p>
+                        Contactless fall detection using
+                        Wi-Fi Channel State Information and
+                        machine learning.
+                    </p>
+
+                </div>
+
+
+                <div class="connection-status">
+
+                    <span class="status-dot"></span>
+
+                    <div>
+
+                        <strong>
+                            System Online
+                        </strong>
+
+                        <small>
+                            Dual ESP32-S3 · CSI Active
+                        </small>
+
+                    </div>
+
+                </div>
+
+            </header>
+
+
+            <!-- =================================================
+                 MAIN FALL CARD
+                 ================================================= -->
+
+            <section class="fall-main-card">
+
+
+                <div class="fall-card-header">
+
+                    <div>
+
+                        <span class="fall-label">
+                            LIVE SAFETY MONITORING
+                        </span>
+
+                        <h2>
+                            Fall Detection Status
+                        </h2>
+
+                    </div>
+
+
+                    <div id="fallLive"
+                         class="fall-live">
+
+                        <span></span>
+                        LIVE
+
+                    </div>
+
+                </div>
+
+
+                <!-- STATUS -->
+
+                <div class="fall-status">
+
+                    <div id="fallIcon"
+                         class="fall-icon">
+
+                        ✓
+
+                    </div>
+
+
+                    <h2 id="fallStatus">
+                        NORMAL
+                    </h2>
+
+
+                    <p id="fallDescription">
+                        No fall pattern detected.
+                    </p>
+
+                </div>
+
+
+                <!-- PROBABILITY -->
+
+                <div class="fall-progress-section">
+
+                    <div class="fall-progress-header">
+
+                        <span>
+                            Fall Probability
+                        </span>
+
+                        <strong id="fallProbability">
+                            0%
+                        </strong>
+
+                    </div>
+
+
+                    <div class="fall-progress-track">
+
+                        <div id="fallConfidenceBar">
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- STATISTICS -->
+
+                <div class="fall-stats">
+
+
+                    <div class="fall-stat">
+
+                        <span>
+                            Normal Probability
+                        </span>
+
+                        <strong id="normalProbability">
+                            100%
+                        </strong>
+
+                    </div>
+
+
+                    <div class="fall-stat">
+
+                        <span>
+                            Friend ESP32
+                        </span>
+
+                        <strong id="friendRate">
+                            0 Hz
+                        </strong>
+
+                    </div>
+
+
+                    <div class="fall-stat">
+
+                        <span>
+                            You ESP32
+                        </span>
+
+                        <strong id="youRate">
+                            0 Hz
+                        </strong>
+
+                    </div>
+
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 INFORMATION CARDS
+                 ================================================= -->
+
+            <section class="fall-info-grid">
+
+
+                <div class="info-card">
+
+                    <h3>
+                        📡 CSI Sensing
+                    </h3>
+
+                    <p>
+                        Two ESP32-S3 devices receive Wi-Fi
+                        Channel State Information from the
+                        configured sensing environment.
+                    </p>
+
+                </div>
+
+
+                <div class="info-card">
+
+                    <h3>
+                        🧠 AI Analysis
+                    </h3>
+
+                    <p>
+                        CSI motion characteristics are
+                        converted into fall-specific features
+                        and analyzed using a Random Forest model.
+                    </p>
+
+                </div>
+
+
+                <div class="info-card">
+
+                    <h3>
+                        🛡 Safety Status
+                    </h3>
+
+                    <p>
+                        The interface displays the current
+                        fall status and the model's estimated
+                        fall probability in real time.
+                    </p>
+
+                </div>
+
+
+            </section>
+
+
+        </div>
+
+    </main>
+
+</div>
+
+
+<script src="/static/fall_detection.js"></script>
+
+</body>
+
+</html>

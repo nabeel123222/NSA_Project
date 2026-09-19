@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>NSA | Alert History</title>
+
+    <link rel="stylesheet" href="/static/style.css">
+
+    <style>
+
+        .alerts-page {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .alerts-hero {
+            margin-bottom: 30px;
+        }
+
+        .alerts-hero h1 {
+            margin-bottom: 8px;
+        }
+
+        .alerts-hero p {
+            color: #777;
+            font-size: 15px;
+        }
+
+        .alerts-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .alert-summary-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.05);
+        }
+
+        .alert-summary-card span {
+            display: block;
+            color: #888;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+
+        .alert-summary-card strong {
+            font-size: 30px;
+        }
+
+        .alerts-main-card {
+            background: #ffffff;
+            border-radius: 18px;
+            padding: 30px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+        }
+
+        .alerts-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+
+        .alerts-header h2 {
+            margin: 0;
+        }
+
+        .alert-status {
+            padding: 7px 13px;
+            border-radius: 20px;
+            background: #eaf8ee;
+            color: #22a447;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .alert-item {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 14px;
+            background: #fafafa;
+            border: 1px solid #eeeeee;
+        }
+
+        .alert-icon {
+            width: 52px;
+            height: 52px;
+            min-width: 52px;
+
+            border-radius: 50%;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            background: #fff0f0;
+            color: #d62828;
+
+            font-size: 24px;
+        }
+
+        .alert-details {
+            flex: 1;
+        }
+
+        .alert-details h3 {
+            margin: 0 0 6px;
+            font-size: 16px;
+            color: #d62828;
+        }
+
+        .alert-details p {
+            margin: 3px 0;
+            color: #777;
+            font-size: 13px;
+        }
+
+        .alert-probability {
+            text-align: right;
+        }
+
+        .alert-probability span {
+            display: block;
+            color: #888;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+
+        .alert-probability strong {
+            font-size: 20px;
+            color: #d62828;
+        }
+
+        .empty-alerts {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+        }
+
+        .empty-alerts-icon {
+            font-size: 45px;
+            margin-bottom: 15px;
+        }
+
+        @media (max-width: 800px) {
+
+            .alerts-summary {
+                grid-template-columns: 1fr;
+            }
+
+            .alerts-main-card {
+                padding: 20px;
+            }
+
+            .alert-item {
+                align-items: flex-start;
+            }
+
+            .alert-probability {
+                text-align: left;
+            }
+
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+
+<div class="app-shell">
+
+
+    <!-- =====================================================
+         SIDEBAR
+         ===================================================== -->
+
+    <aside class="sidebar">
+
+        <div class="brand">
+
+            <div class="brand-icon">
+                N
+            </div>
+
+            <div>
+
+                <h2>NSA</h2>
+
+                <span>
+                    Neuro Sensing
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <nav class="navigation">
+
+
+            <p class="nav-title">
+                MONITORING
+            </p>
+
+
+            <a href="/" class="nav-item">
+
+                <span>◉</span>
+
+                Human Detection
+
+            </a>
+
+
+            <a href="/fall-detection"
+               class="nav-item">
+
+                <span>⚠</span>
+
+                Fall Detection
+
+            </a>
+
+
+            <p class="nav-title">
+                ALERTS
+            </p>
+
+
+            <a href="/alerts"
+               class="nav-item active">
+
+                <span>🔔</span>
+
+                Alert History
+
+            </a>
+
+
+            <p class="nav-title">
+                SYSTEM
+            </p>
+
+
+            <button class="nav-item">
+
+                <span>⌁</span>
+
+                Wi-Fi / CSI
+
+            </button>
+
+
+            <button class="nav-item">
+
+                <span>▣</span>
+
+                Device Manager
+
+            </button>
+
+
+            <button class="nav-item">
+
+                <span>◫</span>
+
+                Detection Timeline
+
+            </button>
+
+
+            <button class="nav-item">
+
+                <span>⚙</span>
+
+                Settings
+
+            </button>
+
+
+        </nav>
+
+
+        <div class="sidebar-footer">
+
+            <div class="system-dot"></div>
+
+            <div>
+
+                <strong>
+                    System Ready
+                </strong>
+
+                <small>
+                    ESP32-S3 connected
+                </small>
+
+            </div>
+
+        </div>
+
+
+    </aside>
+
+
+    <!-- =====================================================
+         MAIN CONTENT
+         ===================================================== -->
+
+    <main class="main-content">
+
+
+        <div class="alerts-page">
+
+
+            <!-- HEADER -->
+
+            <header class="topbar">
+
+
+                <div class="alerts-hero">
+
+                    <p class="eyebrow">
+                        NEURO SENSING ARCHITECTURE
+                    </p>
+
+                    <h1>
+                        Alert History
+                    </h1>
+
+                    <p>
+                        Review detected fall events and
+                        safety alerts generated by the NSA system.
+                    </p>
+
+                </div>
+
+
+                <div class="connection-status">
+
+                    <span class="status-dot"></span>
+
+                    <div>
+
+                        <strong>
+                            System Online
+                        </strong>
+
+                        <small>
+                            Dual ESP32-S3 · CSI Active
+                        </small>
+
+                    </div>
+
+                </div>
+
+
+            </header>
+
+
+            <!-- =================================================
+                 SUMMARY
+                 ================================================= -->
+
+            <section class="alerts-summary">
+
+
+                <div class="alert-summary-card">
+
+                    <span>
+                        TOTAL ALERTS
+                    </span>
+
+                    <strong id="totalAlerts">
+    {{ alerts|length }}
+</strong>
+
+                </div>
+
+
+                <div class="alert-summary-card">
+
+                    <span>
+                        TODAY'S ALERTS
+                    </span>
+
+                    <strong id="todayAlerts">
+    {{ alerts|length }}
+</strong>
+                </div>
+
+
+                <div class="alert-summary-card">
+
+                    <span>
+                        ACKNOWLEDGED
+                    </span>
+
+                    <strong id="acknowledgedAlerts">
+    {{ alerts | selectattr("status", "equalto", "Acknowledged") | list | length }}
+</strong>
+
+                </div>
+
+
+            </section>
+
+
+            <!-- =================================================
+                 ALERT LIST
+                 ================================================= -->
+
+            <section class="alerts-main-card">
+
+
+                <div class="alerts-header">
+
+                    <h2>
+                        Recent Alerts
+                    </h2>
+
+                    <div class="alert-status">
+                        LIVE MONITORING
+                    </div>
+
+                </div>
+
+
+                {% if alerts %}
+
+    {% for alert in alerts %}
+
+        <div class="alert-item">
+
+            <div class="alert-icon">
+                ⚠
+            </div>
+
+
+            <div class="alert-details">
+
+                <h3>
+                    FALL DETECTED
+                </h3>
+
+                <p>
+                    {{ alert.date }} • {{ alert.time }}
+                </p>
+
+                <p>
+                    Status: {{ alert.status }}
+                </p>
+
+            </div>
+
+
+            <div class="alert-probability">
+
+                <span>
+                    Fall Probability
+                </span>
+
+                <strong>
+                    {{ alert.fall_probability }}%
+                </strong>
+
+            </div>
+
+        </div>
+
+    {% endfor %}
+
+{% else %}
+
+    <div class="empty-alerts">
+
+        <div class="empty-alerts-icon">
+            🔔
+        </div>
+
+        <p>
+            No alerts recorded yet.
+        </p>
+
+    </div>
+
+{% endif %}
+
+
+                <!-- EMPTY STATE -->
+
+                <!--
+
+                <div class="empty-alerts">
+
+                    <div class="empty-alerts-icon">
+                        🔔
+                    </div>
+
+                    <p>
+                        No alerts recorded yet.
+                    </p>
+
+                </div>
+
+                -->
+
+
+            </section>
+
+
+        </div>
+
+
+    </main>
+
+
+</div>
+
+
+</body>
+
+</html>

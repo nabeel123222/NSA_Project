@@ -1,13 +1,35 @@
-from flask import Flask, jsonify, render_template
+import sys
+import os
+
+
+
+from flask import Flask, jsonify, render_template, request
 import threading
 import time
-import os
-import sys
 from collections import deque
+PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))
+)
+
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 import joblib
 import numpy as np
-
+from fall_detection.fall_features import (
+    extract_two_receiver_fall_features
+)
+from collection_service import (
+    start_collection,
+    stop_collection,
+    get_collection_status,
+    archive_current_dataset,
+    get_dataset_counts
+)
+from training_service import (
+    start_training,
+    get_training_status
+)
 
 # ============================================================
 # PATHS
@@ -21,6 +43,63 @@ HUMAN_DETECTION_DIR = os.path.join(
     PROJECT_ROOT,
     "human_detection"
 )
+
+FALL_DETECTION_DIR = os.path.join(
+    PROJECT_ROOT,
+    "fall_detection"
+)
+
+FALL_MODEL_PATH = os.path.join(
+    FALL_DETECTION_DIR,
+    "model",
+    "fall_detector_90samples.joblib"
+)
+
+# FRIEND_PORT = (
+#     "/dev/serial/by-id/"
+#     "usb-Espressif_USB_JTAG_serial_debug_unit_94:A9:90:D2:EF:BC-if00"
+# )
+
+# YOUR_PORT = (
+#     "/dev/serial/by-id/"
+#     "usb-1a86_USB_Single_Serial_5B8E073970-if00"
+# )
+
+# FALL_FRIEND_PORT = (
+#     "/dev/serial/by-id/"
+#     "usb-Espressif_USB_JTAG_serial_debug_unit_94:A9:90:D2:EF:BC-if00"
+# )
+
+# FALL_YOUR_PORT = (
+#     "/dev/serial/by-id/"
+#     "usb-1a86_USB_Single_Serial_5B8E073970-if00"
+# )
+
+# ============================================================
+# FALL DETECTION SERIAL PORTS
+# ============================================================
+
+FALL_FRIEND_PORT = (
+    "/dev/serial/by-id/"
+    "usb-Espressif_USB_JTAG_serial_debug_unit_94:A9:90:D2:EF:BC-if00"
+)
+
+FALL_YOUR_PORT = (
+    "/dev/serial/by-id/"
+    "usb-1a86_USB_Single_Serial_5B8E073970-if00"
+)
+
+
+# ============================================================
+# HUMAN DETECTION SERIAL PORTS
+# ============================================================
+
+FRIEND_PORT = "/dev/ttyACM0"
+YOUR_PORT = "/dev/ttyACM1"
+
+FALL_BAUDRATE = 921600
+FALL_WINDOW_SECONDS = 4.0
+FALL_THRESHOLD = 0.70
 
 if HUMAN_DETECTION_DIR not in sys.path:
     sys.path.insert(0, HUMAN_DETECTION_DIR)
@@ -64,12 +143,13 @@ app = Flask(
 MODEL_PATH = os.path.join(
     HUMAN_DETECTION_DIR,
     "model",
-    "calibrated_model.joblib"
+    "ui_two_esp_human_detector.joblib"
 )
 
-PORT = "/dev/ttyACM0"
-BAUDRATE = 921600
+FRIEND_PORT = "/dev/ttyACM0"
+YOUR_PORT = "/dev/ttyACM1"
 
+BAUDRATE = 921600
 WINDOW_SIZE = 50
 EXPECTED_SUBCARRIERS = 64
 
@@ -86,12 +166,47 @@ model_data = joblib.load(MODEL_PATH)
 
 model = model_data["model"]
 
+# ============================================================
+# FALL DETECTION MODEL
+# ============================================================
+
+fall_model_data = joblib.load(FALL_MODEL_PATH)
+
+fall_model = fall_model_data["model"]
+
+# ============================================================
+# FALL DETECTION RUNTIME STATE
+# ============================================================
+
+fall_status = {
+    "status": "OFFLINE",
+    "fall_probability": 0.0,
+    "normal_probability": 1.0,
+    "friend_rate": 0.0,
+    "you_rate": 0.0,
+    "frames_friend": 0,
+    "frames_you": 0,
+    "last_update": None
+}
+
+fall_lock = threading.Lock()
+
+# ============================================================
+# TEMPORARY ALERT HISTORY
+# ============================================================
+
+alert_history = []
+alert_lock = threading.Lock()
+previous_fall_state = "NORMAL"
+
 print("=" * 60)
-print("NSA FLASK BACKEND")
+print("NSA FALL DETECTION MODEL")
 print("=" * 60)
-print("Human detection model loaded.")
-print(f"Model features: {model_data['feature_count']}")
-print(f"Model classes: {model_data['classes']}")
+print("Fall model loaded:")
+print(FALL_MODEL_PATH)
+print("Fall model object:", type(fall_model).__name__)
+print("Fall model classes:", fall_model.classes_)
+print("=" * 60)
 
 
 # ============================================================
@@ -108,6 +223,13 @@ latest_status = {
     "present_probability": 0.0,
     "empty_probability": 0.0,
     "sample_rate": 0.0,
+
+    "fall_state": "NORMAL",
+    "fall_probability": 0.0,
+    "normal_probability": 1.0,
+    "friend_rate": 0.0,
+    "you_rate": 0.0,
+
     "timestamp": None
 }
 
@@ -144,101 +266,168 @@ def calculate_sample_rate(frames):
 
 
 # ============================================================
-# PREDICT ONE WINDOW
+# PREDICT ONE TWO-ESP32 WINDOW
 # ============================================================
 
-def predict_window(frames):
+def predict_window(friend_frames, your_frames):
 
-    if len(frames) != WINDOW_SIZE:
+    if (
+        len(friend_frames) != WINDOW_SIZE
+        or
+        len(your_frames) != WINDOW_SIZE
+    ):
         return None
 
     # --------------------------------------------------------
-    # Convert frames to amplitude matrix
+    # Convert both ESP32 streams to amplitude matrices
     # --------------------------------------------------------
 
-    amp_matrix = frames_to_amplitude_matrix(
-        frames
+    friend_amp = frames_to_amplitude_matrix(
+        friend_frames
+    )
+
+    your_amp = frames_to_amplitude_matrix(
+        your_frames
     )
 
     # --------------------------------------------------------
-    # Check shape
+    # Check shapes
     # --------------------------------------------------------
 
-    if amp_matrix.shape != (
+    expected_shape = (
         WINDOW_SIZE,
         EXPECTED_SUBCARRIERS
-    ):
+    )
 
+    if friend_amp.shape != expected_shape:
         print(
-            f"[WARNING] Unexpected CSI matrix shape: "
-            f"{amp_matrix.shape}"
+            "[WARNING] Friend CSI shape:",
+            friend_amp.shape
         )
+        return None
 
+    if your_amp.shape != expected_shape:
+        print(
+            "[WARNING] Your CSI shape:",
+            your_amp.shape
+        )
         return None
 
     # --------------------------------------------------------
     # Check values
     # --------------------------------------------------------
 
-    if not np.isfinite(amp_matrix).all():
-
+    if not np.isfinite(friend_amp).all():
         print(
-            "[WARNING] CSI window contains "
-            "invalid values."
+            "[WARNING] Friend CSI contains invalid values."
         )
-
         return None
 
-    if np.all(amp_matrix == 0):
-
+    if not np.isfinite(your_amp).all():
         print(
-            "[WARNING] CSI window is all zeros."
+            "[WARNING] Your CSI contains invalid values."
         )
+        return None
 
+    if np.all(friend_amp == 0):
+        print(
+            "[WARNING] Friend CSI window is all zeros."
+        )
+        return None
+
+    if np.all(your_amp == 0):
+        print(
+            "[WARNING] Your CSI window is all zeros."
+        )
         return None
 
     # --------------------------------------------------------
-    # Calculate sample rate BEFORE frames are cleared
+    # Calculate sample rates
     # --------------------------------------------------------
 
-    sample_rate = calculate_sample_rate(
-        frames
+    friend_rate = calculate_sample_rate(
+        friend_frames
     )
 
-    if sample_rate <= 0:
-        sample_rate = 180.0
+    your_rate = calculate_sample_rate(
+        your_frames
+    )
+
+    if friend_rate <= 0:
+        friend_rate = 180.0
+
+    if your_rate <= 0:
+        your_rate = 180.0
 
     # --------------------------------------------------------
-    # Extract features
+    # Extract 258 features from each ESP32
     # --------------------------------------------------------
 
     try:
 
-        feature_vector = extract_feature_vector(
-            amp_matrix,
-            sample_rate_hz=sample_rate
+        friend_features = extract_feature_vector(
+            friend_amp,
+            sample_rate_hz=friend_rate
+        )
+
+        your_features = extract_feature_vector(
+            your_amp,
+            sample_rate_hz=your_rate
         )
 
     except Exception as exc:
 
         print(
-            f"[WARNING] Feature extraction failed: "
-            f"{exc}"
+            f"[WARNING] Feature extraction failed: {exc}"
         )
 
         return None
 
     # --------------------------------------------------------
-    # Feature count check
+    # Verify feature counts
     # --------------------------------------------------------
 
-    if len(feature_vector) != 258:
-
+    if len(friend_features) != 258:
         print(
-            f"[WARNING] Unexpected feature count: "
-            f"{len(feature_vector)}"
+            "[WARNING] Friend feature count:",
+            len(friend_features)
         )
+        return None
 
+    if len(your_features) != 258:
+        print(
+            "[WARNING] Your feature count:",
+            len(your_features)
+        )
+        return None
+
+    # --------------------------------------------------------
+    # Combine:
+    #
+    # Friend = 258
+    # You    = 258
+    # ----------------
+    # Total  = 516
+    # --------------------------------------------------------
+
+    feature_vector = np.concatenate(
+        [
+            friend_features,
+            your_features
+        ]
+    )
+
+    if len(feature_vector) != 516:
+        print(
+            "[WARNING] Combined feature count:",
+            len(feature_vector)
+        )
+        return None
+
+    if not np.isfinite(feature_vector).all():
+        print(
+            "[WARNING] Combined features contain invalid values."
+        )
         return None
 
     feature_vector = feature_vector.reshape(
@@ -258,9 +447,11 @@ def predict_window(frames):
         feature_vector
     )[0]
 
+    # --------------------------------------------------------
     # Model:
     # 0 = empty
     # 1 = present
+    # --------------------------------------------------------
 
     empty_probability = float(
         probabilities[0]
@@ -280,12 +471,18 @@ def predict_window(frames):
         raw_prediction = "empty"
         confidence = empty_probability
 
+    # --------------------------------------------------------
+    # Return result
+    # --------------------------------------------------------
+
     return {
         "prediction": raw_prediction,
         "confidence": confidence,
         "empty_probability": empty_probability,
         "present_probability": present_probability,
-        "sample_rate": sample_rate
+        "sample_rate": (
+            friend_rate + your_rate
+        ) / 2.0
     }
 
 
@@ -322,8 +519,10 @@ def update_status(result, final_state):
         }
 
 
+
+
 # ============================================================
-# DETECTOR LOOP
+# TWO-ESP32 DETECTOR LOOP
 # ============================================================
 
 def detector_loop():
@@ -331,12 +530,14 @@ def detector_loop():
     global detector_running
 
     print()
-    print("Starting human detection thread...")
-    print("Serial port:", PORT)
-    print("Baud rate:", BAUDRATE)
+    print("Starting two-ESP32 human detection thread...")
+    print("Friend serial port:", FRIEND_PORT)
+    print("Your serial port   :", YOUR_PORT)
+    print("Baud rate          :", BAUDRATE)
     print()
 
-    frames = []
+    friend_frames = []
+    your_frames = []
 
     prediction_history = deque(
         maxlen=SMOOTHING_WINDOWS
@@ -344,58 +545,85 @@ def detector_loop():
 
     try:
 
-        reader = CSISerialReader(
-            port=PORT,
+        # ----------------------------------------------------
+        # Open BOTH readers once
+        # ----------------------------------------------------
+
+        friend_reader = CSISerialReader(
+            port=FRIEND_PORT,
             baudrate=BAUDRATE,
             timeout=2.0
         )
 
-        with reader:
+        your_reader = CSISerialReader(
+            port=YOUR_PORT,
+            baudrate=BAUDRATE,
+            timeout=2.0
+        )
+
+        friend_reader.open()
+        your_reader.open()
+
+        try:
 
             while detector_running:
 
-                frame = reader.read_frame()
+                # ------------------------------------------------
+                # Read one frame from each ESP32
+                # ------------------------------------------------
 
-                if frame is None:
-                    continue
+                friend_frame = friend_reader.read_frame()
+
+                if (
+                    friend_frame is not None
+                    and
+                    friend_frame.complex_csi.size
+                    == EXPECTED_SUBCARRIERS
+                ):
+
+                    friend_frames.append(
+                        friend_frame
+                    )
+
+                your_frame = your_reader.read_frame()
+
+                if (
+                    your_frame is not None
+                    and
+                    your_frame.complex_csi.size
+                    == EXPECTED_SUBCARRIERS
+                ):
+
+                    your_frames.append(
+                        your_frame
+                    )
 
                 # ------------------------------------------------
-                # Accept ONLY 64-subcarrier frames
+                # Wait for 50 valid frames from BOTH
                 # ------------------------------------------------
 
                 if (
-                    frame.complex_csi.size
-                    != EXPECTED_SUBCARRIERS
+                    len(friend_frames) < WINDOW_SIZE
+                    or
+                    len(your_frames) < WINDOW_SIZE
                 ):
-
-                    print(
-                        f"[WARNING] Ignoring CSI frame "
-                        f"with "
-                        f"{frame.complex_csi.size} "
-                        f"subcarriers"
-                    )
-
-                    continue
-
-                frames.append(frame)
-
-                # ------------------------------------------------
-                # Wait for 50 valid frames
-                # ------------------------------------------------
-
-                if len(frames) < WINDOW_SIZE:
                     continue
 
                 # ------------------------------------------------
-                # EXACT SAME PREDICTION PIPELINE
+                # Prediction
                 # ------------------------------------------------
 
                 result = predict_window(
-                    frames
+                    friend_frames,
+                    your_frames
                 )
 
+                # ------------------------------------------------
                 # Clear AFTER prediction
-                frames.clear()
+                # ------------------------------------------------
+
+                friend_frames.clear()
+                your_frames.clear()
 
                 if result is None:
                     continue
@@ -418,42 +646,71 @@ def detector_loop():
 
                 if (
                     raw_prediction == "present"
-                    and present_probability >= PRESENT_CONFIDENCE
+                    and
+                    present_probability
+                    >= PRESENT_CONFIDENCE
                 ):
 
-                    prediction_history.append("present")
+                    prediction_history.append(
+                        "present"
+                    )
 
                 else:
 
-                    prediction_history.append("empty")
+                    prediction_history.append(
+                        "empty"
+                    )
 
+                present_count = (
+                    prediction_history.count(
+                        "present"
+                    )
+                )
 
-                present_count = prediction_history.count("present")
-                empty_count = prediction_history.count("empty")
-
+                empty_count = (
+                    prediction_history.count(
+                        "empty"
+                    )
+                )
 
                 # ------------------------------------------------
                 # Hysteresis state machine
                 # ------------------------------------------------
 
-                previous_state = latest_status["state"]
+                previous_state = (
+                    latest_status["state"]
+                )
 
                 if previous_state == "PRESENT":
 
-                    # Stay PRESENT until 3 confident EMPTY
-                    # windows are observed.
-                    if empty_count >= PRESENT_REQUIRED:
+                    # Stay PRESENT until 3 confident
+                    # EMPTY windows are observed.
+
+                    if (
+                        empty_count
+                        >= PRESENT_REQUIRED
+                    ):
+
                         final_state = "EMPTY"
+
                     else:
+
                         final_state = "PRESENT"
 
                 else:
 
                     # Change EMPTY -> PRESENT only after
                     # 3 confident PRESENT windows.
-                    if present_count >= PRESENT_REQUIRED:
+
+                    if (
+                        present_count
+                        >= PRESENT_REQUIRED
+                    ):
+
                         final_state = "PRESENT"
+
                     else:
+
                         final_state = "EMPTY"
 
                 # ------------------------------------------------
@@ -479,6 +736,22 @@ def detector_loop():
                     f"{result['sample_rate']:.1f} Hz"
                 )
 
+        finally:
+
+            # ----------------------------------------------------
+            # Close both serial readers
+            # ----------------------------------------------------
+
+            try:
+                friend_reader.close()
+            except Exception:
+                pass
+
+            try:
+                your_reader.close()
+            except Exception:
+                pass
+
     except Exception as exc:
 
         print(
@@ -492,6 +765,324 @@ def detector_loop():
         print(
             "[DETECTOR] Detection thread stopped."
         )
+
+# ============================================================
+# FALL DETECTION
+# ============================================================
+
+fall_detector_thread = None
+fall_detector_running = False
+
+
+def calculate_rate(frames):
+    if len(frames) < 2:
+        return 0.0
+
+    timestamps = np.array(
+        [frame.timestamp for frame in frames],
+        dtype=np.float64
+    )
+
+    differences = np.diff(timestamps)
+
+    differences = differences[
+        np.isfinite(differences)
+        & (differences > 0)
+    ]
+
+    if len(differences) == 0:
+        return 0.0
+
+    return float(1.0 / np.median(differences))
+
+
+def fall_detection_loop():
+
+    global fall_detector_running
+
+    print()
+    print("=" * 60)
+    print("NSA FALL DETECTION")
+    print("=" * 60)
+    print("Friend:", FALL_FRIEND_PORT)
+    print("You   :", FALL_YOUR_PORT)
+    print("=" * 60)
+
+    friend_reader = None
+    you_reader = None
+
+    friend_frames = deque(maxlen=1000)
+    you_frames = deque(maxlen=1000)
+
+    try:
+
+        friend_reader = CSISerialReader(
+            port=FALL_FRIEND_PORT,
+            baudrate=FALL_BAUDRATE,
+            timeout=2.0
+        )
+
+        you_reader = CSISerialReader(
+             port=FALL_FRIEND_PORT,
+            baudrate=FALL_BAUDRATE,
+            timeout=2.0
+        )
+
+        friend_reader.open()
+        you_reader.open()
+
+        while fall_detector_running:
+
+            friend_frame = friend_reader.read_frame()
+            you_frame = you_reader.read_frame()
+
+            if friend_frame is not None:
+                if friend_frame.complex_csi.size == 64:
+                    friend_frames.append(friend_frame)
+
+            if you_frame is not None:
+                if you_frame.complex_csi.size == 64:
+                    you_frames.append(you_frame)
+
+            if len(friend_frames) < 30 or len(you_frames) < 30:
+                continue
+
+            # ------------------------------------------------
+            # 4-second rolling window
+            # ------------------------------------------------
+
+            friend_latest_time = friend_frames[-1].timestamp
+            you_latest_time = you_frames[-1].timestamp
+
+            friend_window = [
+                f for f in friend_frames
+                if friend_latest_time - f.timestamp
+                <= FALL_WINDOW_SECONDS
+            ]
+
+            you_window = [
+                f for f in you_frames
+                if you_latest_time - f.timestamp
+                <= FALL_WINDOW_SECONDS
+            ]
+
+            if len(friend_window) < 30:
+                continue
+
+            if len(you_window) < 30:
+                continue
+
+            friend_csi = np.abs(
+                np.array(
+                    [f.complex_csi for f in friend_window]
+                )
+            )
+
+            you_csi = np.abs(
+                np.array(
+                    [f.complex_csi for f in you_window]
+                )
+            )
+
+            friend_rate = calculate_rate(friend_window)
+            you_rate = calculate_rate(you_window)
+
+            try:
+
+                features = extract_two_receiver_fall_features(
+                    friend_csi,
+                    you_csi,
+                    friend_rate,
+                    you_rate
+                )
+
+                features_2d = features.reshape(1, -1)
+
+                probabilities = fall_model.predict_proba(
+                    features_2d
+                )[0]
+
+                classes = fall_model.classes_
+
+                fall_probability = 0.0
+                normal_probability = 0.0
+
+                for cls, probability in zip(
+                    classes,
+                    probabilities
+                ):
+
+                    if str(cls).upper() == "FALL":
+                        fall_probability = float(probability)
+
+                    elif str(cls).upper() == "NORMAL":
+                        normal_probability = float(probability)
+
+                # ------------------------------------------------
+                # Final fall decision
+                # ------------------------------------------------
+
+                strong_fall_pattern = (
+                    (
+                        features[0] >= 100.0
+                        and features[1] >= 8.0
+                    )
+                    or
+                    (
+                        features[3] >= 150.0
+                        and features[4] >= 10.0
+                    )
+                )
+
+                if (
+                    fall_probability >= FALL_THRESHOLD
+                    or strong_fall_pattern
+                ):
+                    fall_state = "FALL DETECTED"
+                else:
+                    fall_state = "NORMAL"
+
+                 # ------------------------------------------------
+                # Create alert on new fall event
+                # ------------------------------------------------
+
+                global previous_fall_state
+
+                if (
+                    fall_state == "FALL DETECTED"
+                    and previous_fall_state != "FALL DETECTED"
+                ):
+
+                    alert_record = {
+                        "id": len(alert_history) + 1,
+                        "date": time.strftime("%d-%m-%Y"),
+                        "time": time.strftime("%H:%M:%S"),
+                        "fall_probability": round(
+                            fall_probability * 100,
+                            1
+                        ),
+                        "status": "Acknowledgement Pending"
+                    }
+
+                    with alert_lock:
+                        alert_history.append(alert_record)
+
+                    print(
+                        "[ALERT] New fall event recorded:",
+                        alert_record,
+                        flush=True
+                    )
+
+                previous_fall_state = fall_state
+                # ------------------------------------------------
+                # Update Flask state
+                # ------------------------------------------------
+
+                with status_lock:
+
+                    latest_status[
+                        "fall_state"
+                    ] = fall_state
+
+                    latest_status[
+                        "fall_probability"
+                    ] = round(
+                        fall_probability,
+                        4
+                    )
+
+                    latest_status[
+                        "normal_probability"
+                    ] = round(
+                        normal_probability,
+                        4
+                    )
+
+                    latest_status[
+                        "friend_rate"
+                    ] = round(
+                        friend_rate,
+                        2
+                    )
+
+                    latest_status[
+                        "you_rate"
+                    ] = round(
+                        you_rate,
+                        2
+                    )
+
+                    latest_status[
+                        "timestamp"
+                    ] = time.time()
+
+                print(
+                    f"[FALL] "
+                    f"{fall_state} | "
+                    f"Fall={fall_probability * 100:.1f}% | "
+                    f"Friend={friend_rate:.1f} Hz | "
+                    f"You={you_rate:.1f} Hz",
+                    flush=True
+                )
+
+            except Exception as exc:
+
+                print(
+                    f"[FALL WARNING] {exc}",
+                    flush=True
+                )
+
+    except Exception as exc:
+
+        print(
+            f"[FALL ERROR] {exc}",
+            flush=True
+        )
+
+    finally:
+
+        fall_detector_running = False
+
+        try:
+            if friend_reader is not None:
+                friend_reader.close()
+        except Exception:
+            pass
+
+        try:
+            if you_reader is not None:
+                you_reader.close()
+        except Exception:
+            pass
+
+        print("[FALL] Detection thread stopped.")
+
+
+def start_fall_detector():
+
+    global fall_detector_thread
+    global fall_detector_running
+
+    if fall_detector_running:
+        return False
+
+    fall_detector_running = True
+
+    fall_detector_thread = threading.Thread(
+        target=fall_detection_loop,
+        daemon=True
+    )
+
+    fall_detector_thread.start()
+
+    return True
+
+
+def stop_fall_detector():
+
+    global fall_detector_running
+
+    fall_detector_running = False
 
 
 # ============================================================
@@ -548,10 +1139,83 @@ def stop_detector():
 @app.route("/")
 def home():
 
+    # Stop Fall Detection before using Human Detection
+    stop_fall_detector()
+
     return render_template(
         "index.html"
     )
 
+# ============================================================
+# FALL DETECTION API
+# ============================================================
+
+@app.route("/fall-detection")
+def fall_detection_page():
+
+    # Stop Human Detection before starting Fall Detection
+    stop_detector()
+
+    # Start Fall Detection
+    start_fall_detector()
+
+    return render_template("fall_detection.html")
+
+@app.route("/alerts")
+def alerts_page():
+    stop_fall_detector()
+
+    today = time.strftime("%d-%m-%Y")
+
+    with alert_lock:
+        alerts = list(alert_history)
+
+    today_alerts = sum(
+        1
+        for alert in alerts
+        if alert["date"] == today
+    )
+
+    return render_template(
+        "alerts.html",
+        alerts=alerts,
+        today_alerts=today_alerts
+    )
+
+@app.route("/api/alerts/acknowledge", methods=["POST"])
+def acknowledge_alert():
+
+    with alert_lock:
+
+        if not alert_history:
+            return jsonify({
+                "success": False,
+                "message": "No alerts available"
+            }), 404
+
+        # Find the most recent pending alert
+        for alert in reversed(alert_history):
+
+            if alert["status"] == "Acknowledgement Pending":
+
+                alert["status"] = "Acknowledged"
+
+                return jsonify({
+                    "success": True,
+                    "alert_id": alert["id"],
+                    "status": "Acknowledged"
+                })
+
+        return jsonify({
+            "success": False,
+            "message": "No pending alert"
+        }), 404
+
+
+@app.route("/api/fall/status")
+def fall_detection_status():
+    with fall_lock:
+        return jsonify(latest_status)
 
 # ============================================================
 # START API
@@ -631,7 +1295,120 @@ def status():
 
     return api_status()
 
+# ============================================================
+# TRAINING DATA COLLECTION API
+# ============================================================
 
+@app.route("/api/collection/start", methods=["POST"])
+def api_collection_start():
+
+    data = request.get_json(
+        silent=True
+    ) or {}
+
+    label = data.get(
+        "label",
+        "EMPTY"
+    )
+
+    samples = data.get(
+        "samples",
+        30
+    )
+
+    started, message = start_collection(
+        label,
+        samples
+    )
+
+    if started:
+        return jsonify({
+            "success": True,
+            "message": message
+        })
+
+    return jsonify({
+        "success": False,
+        "message": message
+    }), 400
+
+
+@app.route("/api/collection/stop", methods=["POST"])
+def api_collection_stop():
+
+    stop_collection()
+
+    return jsonify({
+        "status": "success",
+        "message": "Collection stopping."
+    })
+
+
+@app.route("/api/collection/status")
+def api_collection_status():
+
+    return jsonify(
+        get_collection_status()
+    )
+
+
+# ============================================================
+# AI TRAINING API
+# ============================================================
+
+@app.route("/api/training/start", methods=["POST"])
+def api_training_start():
+
+    started, message = start_training()
+
+    if started:
+        return jsonify({
+            "success": True,
+            "message": message
+        })
+
+    return jsonify({
+        "success": False,
+        "message": message
+    }), 400
+
+
+@app.route("/api/training/status")
+def api_training_status():
+
+    return jsonify(
+        get_training_status()
+    )
+
+
+# ============================================================
+# NEW ROOM / RECALIBRATION API
+# ============================================================
+
+@app.route("/api/dataset/new-room", methods=["POST"])
+def api_new_room():
+
+    success, message = archive_current_dataset()
+
+    if success:
+        return jsonify({
+            "success": True,
+            "message": message,
+            "counts": get_dataset_counts()
+        })
+
+    return jsonify({
+        "success": False,
+        "message": message
+    }), 400
+
+
+@app.route("/api/dataset/counts")
+def api_dataset_counts():
+
+    return jsonify(
+        get_dataset_counts()
+    )
 # ============================================================
 # RUN
 # ============================================================
